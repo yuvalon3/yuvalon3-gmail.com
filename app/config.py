@@ -49,18 +49,6 @@ class Settings:
     public_base_url: str = field(default_factory=lambda: _env("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/"))
     data_dir: Path = field(default_factory=lambda: Path(_env("DATA_DIR", "data")))
 
-    # --- Instagram / Meta ---
-    ig_access_token: str = field(default_factory=lambda: _env("IG_ACCESS_TOKEN"))
-    ig_verify_token: str = field(default_factory=lambda: _env("IG_VERIFY_TOKEN"))
-    meta_app_secret: str = field(default_factory=lambda: _env("META_APP_SECRET"))
-    graph_api_base: str = field(
-        default_factory=lambda: _env("GRAPH_API_BASE", "https://graph.instagram.com/v21.0").rstrip("/")
-    )
-    # Comma-separated Instagram-scoped IDs allowed to create receipts (you).
-    allowed_sender_ids: set[str] = field(
-        default_factory=lambda: {s.strip() for s in _env("ALLOWED_SENDER_IDS").split(",") if s.strip()}
-    )
-
     # --- Telegram ---
     telegram_bot_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
     # Random string; Telegram echoes it back so we know webhook calls are really from Telegram.

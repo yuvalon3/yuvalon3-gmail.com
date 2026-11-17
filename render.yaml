@@ -20,14 +20,6 @@ services:
         sync: false
       - key: TELEGRAM_ALLOWED_USER_IDS
         sync: false
-      - key: IG_ACCESS_TOKEN
-        sync: false
-      - key: IG_VERIFY_TOKEN
-        sync: false
-      - key: META_APP_SECRET
-        sync: false
-      - key: ALLOWED_SENDER_IDS
-        sync: false
       - key: HYP_API_KEY
         sync: false
       - key: HYP_DEVELOPER_EMAIL
