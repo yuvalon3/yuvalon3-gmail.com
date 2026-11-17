@@ -9,9 +9,11 @@ import logging
 import re
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from .config import settings
+from .hyp import HypError
 from .instagram import InstagramClient, verify_signature
 from .parser import ParseError
 from .service import HELP_TEXT, ReceiptService, owner_reply
@@ -55,12 +57,12 @@ async def receive_webhook(request: Request, background: BackgroundTasks):
             sender = event.get("sender", {}).get("id")
             mid = msg.get("mid")
             if sender and (not mid or service.storage.mark_processed(mid)):
-                background.add_task(handle_message, sender, msg["text"])
+                background.add_task(handle_message, sender, msg["text"], mid)
     # Always answer 200 fast, otherwise Meta keeps retrying.
     return {"ok": True}
 
 
-async def handle_message(sender_id: str, text: str) -> None:
+async def handle_message(sender_id: str, text: str, mid: str | None = None) -> None:
     try:
         if sender_id not in settings.allowed_sender_ids:
             log.warning("Message from unknown sender %s ignored", sender_id)
@@ -75,12 +77,16 @@ async def handle_message(sender_id: str, text: str) -> None:
             return
 
         try:
-            result = service.issue(text)
+            result = await run_in_threadpool(service.issue, text, mid)
         except ParseError as e:
             await ig.send_text(sender_id, f"⚠️ {e}\n\n{HELP_TEXT}")
             return
+        except HypError as e:
+            await ig.send_text(sender_id, f"❌ {e}")
+            return
 
-        await ig.send_image(sender_id, result.image_url)
+        if result.image_url:
+            await ig.send_image(sender_id, result.image_url)
         await ig.send_text(sender_id, owner_reply(result))
         log.info("Receipt %s issued for %s", result.number, result.request.name)
     except Exception:

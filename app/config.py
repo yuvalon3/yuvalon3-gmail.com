@@ -61,6 +61,13 @@ class Settings:
         default_factory=lambda: {s.strip() for s in _env("ALLOWED_SENDER_IDS").split(",") if s.strip()}
     )
 
+    # --- Hyp (EZcount) – official receipts. Leave HYP_API_KEY empty to draw receipts locally. ---
+    hyp_api_key: str = field(default_factory=lambda: _env("HYP_API_KEY"))
+    hyp_developer_email: str = field(default_factory=lambda: _env("HYP_DEVELOPER_EMAIL"))
+    hyp_api_base: str = field(default_factory=lambda: _env("HYP_API_BASE", "https://api.ezcount.co.il"))
+    hyp_doc_type: int = field(default_factory=lambda: int(_env("HYP_DOC_TYPE", "400")))  # 400 = קבלה
+    hyp_send_email_copy: bool = field(default_factory=lambda: _env("HYP_SEND_EMAIL_COPY", "0") in ("1", "true"))
+
     @property
     def receipts_dir(self) -> Path:
         return self.data_dir / "receipts"

@@ -25,3 +25,7 @@ services:
         sync: false
       - key: ALLOWED_SENDER_IDS
         sync: false
+      - key: HYP_API_KEY
+        sync: false
+      - key: HYP_DEVELOPER_EMAIL
+        sync: false
