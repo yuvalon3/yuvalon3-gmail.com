@@ -98,6 +98,14 @@ HELP_TEXT = (
 )
 
 
+def owner_summary(r: IssuedReceipt) -> str:
+    """Short confirmation without links (Telegram shows the links as buttons)."""
+    kind = f" · {r.request.kind}" if r.request.kind else ""
+    phone = "" if r.request.phone else "\n(אין טלפון – בוואטסאפ בוחרים את הכלה מאנשי הקשר)"
+    return (f"✅ קבלה מס' {r.number} הופקה\n"
+            f"{r.request.name} · {format_amount(r.request.amount)} · {r.request.method}{kind}{phone}")
+
+
 def owner_reply(r: IssuedReceipt) -> str:
     to = "לצ'אט של הכלה" if r.request.phone else "(בחרו את הכלה מרשימת אנשי הקשר)"
     kind = f" · {r.request.kind}" if r.request.kind else ""

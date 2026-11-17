@@ -1,4 +1,4 @@
-"""Try the bot locally without Instagram:
+"""Try the bot locally without Telegram:
 
     python -m app.cli "דנה כהן 1500 ביט 052-1234567"
 """

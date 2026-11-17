@@ -1,9 +1,6 @@
-import hashlib
-import hmac
 from urllib.parse import parse_qs, urlparse
 
 from app.config import Settings
-from app.instagram import verify_signature
 from app.service import ReceiptService
 
 
@@ -26,10 +23,3 @@ def test_issue_receipt(tmp_path):
     assert "דנה" in text and "1,500 ₪" in text and r1.image_url in text
     assert urlparse(r2.whatsapp_url).path == "/"
 
-
-def test_signature():
-    body = b'{"a":1}'
-    sig = "sha256=" + hmac.new(b"secret", body, hashlib.sha256).hexdigest()
-    assert verify_signature("secret", body, sig)
-    assert not verify_signature("secret", body, "sha256=bad")
-    assert not verify_signature("secret", body, None)

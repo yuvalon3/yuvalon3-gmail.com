@@ -1,31 +1,46 @@
-"""Web server: Instagram webhook + public receipt images.
+"""Web server: Telegram webhook and public receipt images.
 
 Run:  uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
+from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .hyp import HypError
-from .instagram import InstagramClient, verify_signature
 from .parser import ParseError
-from .service import HELP_TEXT, ReceiptService, owner_reply
+from .service import HELP_TEXT, ReceiptService, owner_summary
+from .telegram import TelegramClient, url_buttons, verify_secret, webhook_secret
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("receipt-bot")
 
-app = FastAPI(title="Instagram receipt bot")
 service = ReceiptService(settings)
-ig = InstagramClient(settings.ig_access_token, settings.graph_api_base)
+tg = TelegramClient(settings.telegram_bot_token, settings.telegram_api_base)
+TG_SECRET = webhook_secret(settings.telegram_webhook_secret, settings.telegram_bot_token)
 
-HELP_WORDS = {"עזרה", "help", "?", "היי", "שלום", "start"}
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Register the Telegram webhook automatically, so there is no manual setWebhook step.
+    if settings.telegram_bot_token and settings.public_base_url.startswith("https://"):
+        try:
+            await tg.set_webhook(f"{settings.public_base_url}/telegram/webhook", TG_SECRET)
+            log.info("Telegram webhook registered")
+        except Exception:
+            log.exception("Could not register the Telegram webhook")
+    yield
+
+
+app = FastAPI(title="Receipt bot", lifespan=lifespan)
+
+HELP_WORDS = {"עזרה", "help", "?", "היי", "שלום", "start", "/start", "/help"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
@@ -34,65 +49,63 @@ def health():
     return {"ok": True}
 
 
-@app.get("/webhook")
-def verify_webhook(request: Request):
-    """Meta calls this once when you register the webhook URL."""
-    p = request.query_params
-    if p.get("hub.mode") == "subscribe" and p.get("hub.verify_token") == settings.ig_verify_token:
-        return PlainTextResponse(p.get("hub.challenge", ""))
-    raise HTTPException(status_code=403, detail="verification failed")
-
-
-@app.post("/webhook")
-async def receive_webhook(request: Request, background: BackgroundTasks):
-    body = await request.body()
-    if not verify_signature(settings.meta_app_secret, body, request.headers.get("X-Hub-Signature-256")):
-        raise HTTPException(status_code=403, detail="bad signature")
-    payload = json.loads(body or b"{}")
-    for entry in payload.get("entry", []):
-        for event in entry.get("messaging", []):
-            msg = event.get("message") or {}
-            if msg.get("is_echo") or "text" not in msg:
-                continue
-            sender = event.get("sender", {}).get("id")
-            mid = msg.get("mid")
-            if sender and (not mid or service.storage.mark_processed(mid)):
-                background.add_task(handle_message, sender, msg["text"], mid)
-    # Always answer 200 fast, otherwise Meta keeps retrying.
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request, background: BackgroundTasks):
+    if not verify_secret(TG_SECRET, request.headers.get("X-Telegram-Bot-Api-Secret-Token")):
+        raise HTTPException(status_code=403, detail="bad secret")
+    update = await request.json()
+    msg = update.get("message") or {}
+    text = msg.get("text")
+    chat_id = (msg.get("chat") or {}).get("id")
+    user_id = (msg.get("from") or {}).get("id")
+    update_id = update.get("update_id")
+    if text and chat_id and user_id and (update_id is None or service.storage.mark_processed(f"tg:{update_id}")):
+        background.add_task(handle_telegram, chat_id, str(user_id), text, f"tg-{chat_id}-{msg.get('message_id')}")
     return {"ok": True}
 
 
-async def handle_message(sender_id: str, text: str, mid: str | None = None) -> None:
+async def handle_telegram(chat_id: int, user_id: str, text: str, transaction_id: str) -> None:
     try:
-        if sender_id not in settings.allowed_sender_ids:
-            log.warning("Message from unknown sender %s ignored", sender_id)
-            if not settings.allowed_sender_ids:
-                # First-time setup helper: tell the owner which ID to put in ALLOWED_SENDER_IDS.
-                await ig.send_text(sender_id, f"🔒 הבוט עדיין לא הוגדר.\nה-ID שלך: {sender_id}\n"
-                                              f"יש להוסיף אותו למשתנה ALLOWED_SENDER_IDS ולהפעיל מחדש.")
+        if user_id not in settings.telegram_allowed_user_ids:
+            log.warning("Telegram message from unknown user %s ignored", user_id)
+            if not settings.telegram_allowed_user_ids:
+                # First-time setup helper: tell the owner which ID to put in TELEGRAM_ALLOWED_USER_IDS.
+                await tg.send_text(chat_id, f"🔒 הבוט עדיין לא הוגדר.\nה-ID שלך: {user_id}\n"
+                                            f"יש להוסיף אותו למשתנה TELEGRAM_ALLOWED_USER_IDS ולהפעיל מחדש.")
             return
 
         if text.strip().lower() in HELP_WORDS:
-            await ig.send_text(sender_id, HELP_TEXT)
+            await tg.send_text(chat_id, HELP_TEXT)
             return
 
         try:
-            result = await run_in_threadpool(service.issue, text, mid)
+            result = await run_in_threadpool(service.issue, text, transaction_id)
         except ParseError as e:
-            await ig.send_text(sender_id, f"⚠️ {e}\n\n{HELP_TEXT}")
+            await tg.send_text(chat_id, f"⚠️ {e}\n\n{HELP_TEXT}")
             return
         except HypError as e:
-            await ig.send_text(sender_id, f"❌ {e}")
+            await tg.send_text(chat_id, f"❌ {e}")
             return
 
-        if result.image_url:
-            await ig.send_image(sender_id, result.image_url)
-        await ig.send_text(sender_id, owner_reply(result))
-        log.info("Receipt %s issued for %s", result.number, result.request.name)
-    except Exception:
-        log.exception("Failed handling message")
+        # 1. The receipt itself
         try:
-            await ig.send_text(sender_id, "❌ משהו השתבש בהפקת הקבלה. נסו שוב בעוד רגע.")
+            if result.image_path:
+                await tg.send_photo_file(chat_id, result.image_path, f"קבלה מס' {result.number}")
+            elif result.receipt_url:
+                await tg.send_document_url(chat_id, result.receipt_url, f"קבלה מס' {result.number}")
+        except Exception:
+            log.warning("Could not attach the receipt file; the link button is still sent", exc_info=True)
+
+        # 2. Summary + buttons
+        to = "📲 שליחה לכלה בוואטסאפ"
+        buttons = url_buttons([(to, result.whatsapp_url)],
+                              [("🧾 פתיחת הקבלה", result.receipt_url)] if result.receipt_url.startswith("https://") else [])
+        await tg.send_text(chat_id, owner_summary(result), reply_markup=buttons)
+        log.info("Receipt %s issued for %s (telegram)", result.number, result.request.name)
+    except Exception:
+        log.exception("Failed handling telegram message")
+        try:
+            await tg.send_text(chat_id, "❌ משהו השתבש בהפקת הקבלה. נסו שוב בעוד רגע.")
         except Exception:
             pass
 
