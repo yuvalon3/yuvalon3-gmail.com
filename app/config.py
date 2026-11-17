@@ -61,6 +61,16 @@ class Settings:
         default_factory=lambda: {s.strip() for s in _env("ALLOWED_SENDER_IDS").split(",") if s.strip()}
     )
 
+    # --- Telegram ---
+    telegram_bot_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
+    # Random string; Telegram echoes it back so we know webhook calls are really from Telegram.
+    telegram_webhook_secret: str = field(default_factory=lambda: _env("TELEGRAM_WEBHOOK_SECRET"))
+    telegram_api_base: str = field(default_factory=lambda: _env("TELEGRAM_API_BASE", "https://api.telegram.org"))
+    # Comma-separated Telegram user IDs allowed to create receipts (you).
+    telegram_allowed_user_ids: set[str] = field(
+        default_factory=lambda: {s.strip() for s in _env("TELEGRAM_ALLOWED_USER_IDS").split(",") if s.strip()}
+    )
+
     # --- Hyp (EZcount) – official receipts. Leave HYP_API_KEY empty to draw receipts locally. ---
     hyp_api_key: str = field(default_factory=lambda: _env("HYP_API_KEY"))
     hyp_developer_email: str = field(default_factory=lambda: _env("HYP_DEVELOPER_EMAIL"))

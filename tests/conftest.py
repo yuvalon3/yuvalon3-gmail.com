@@ -6,5 +6,6 @@ before the app is imported, means tests can never call the real Hyp or Instagram
 import os
 
 for _name in ("HYP_API_KEY", "HYP_DEVELOPER_EMAIL", "IG_ACCESS_TOKEN", "META_APP_SECRET",
-              "ALLOWED_SENDER_IDS", "WHATSAPP_TEMPLATE"):
+              "ALLOWED_SENDER_IDS", "WHATSAPP_TEMPLATE",
+              "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_ALLOWED_USER_IDS"):
     os.environ[_name] = ""

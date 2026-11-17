@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: instagram-receipt-bot
+    name: receipt-bot
     runtime: docker
     # Free plan: receipts live in Hyp, so no persistent disk is needed.
     # The service sleeps after ~15 idle minutes; the first message after that takes ~30s.
@@ -15,6 +15,10 @@ services:
       - key: BUSINESS_ID
         sync: false
       - key: BUSINESS_PHONE
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOWED_USER_IDS
         sync: false
       - key: IG_ACCESS_TOKEN
         sync: false
