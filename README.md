@@ -11,7 +11,6 @@
 2. **שולח לכם אותה** בצ'אט באינסטגרם.
 3. **שולח קישור וואטסאפ**. לחיצה עליו פותחת את וואטסאפ עם הודעה מוכנה לכלה, כולל קישור לקבלה. נשאר רק ללחוץ "שליחה".
 
-![דוגמה לקבלה](docs/sample-receipt.png)
 
 ## מה אפשר לכתוב בהודעה
 
@@ -37,6 +36,8 @@
 
 ```bash
 pip install -r requirements-dev.txt
+sudo apt-get install fonts-noto-core   # פעם אחת, לבניית הגופן העברי של הקבלה
+python -m app.build_fonts
 cp .env.example .env        # ממלאים את פרטי העסק
 python -m app.cli "דנה כהן 1500 ביט 052-1234567"
 ```

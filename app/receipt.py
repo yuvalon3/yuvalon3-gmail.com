@@ -38,6 +38,9 @@ class ReceiptData:
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     name = "ReceiptSans-Bold.ttf" if bold else "ReceiptSans-Regular.ttf"
+    if not (FONTS_DIR / name).is_file():
+        raise RuntimeError("Receipt fonts are missing - run: python -m app.build_fonts "
+                           "(needs the fonts-noto-core package and fonttools)")
     # BASIC layout + python-bidi works everywhere (no libraqm needed).
     return ImageFont.truetype(str(FONTS_DIR / name), size, layout_engine=ImageFont.Layout.BASIC)
 
