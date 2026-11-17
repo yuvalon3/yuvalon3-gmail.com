@@ -62,7 +62,8 @@ class HypClient:
             "type": self.doc_type,
             "description": description,
             "customer_name": customer_name,
-            "item": [{"details": description, "amount": 1, "price": float(amount), "vat_type": "INC"}],
+            "item": [{"details": description, "amount": 1, "price": float(amount),
+                      "vat_type": "NON" if self.doc_type == 400 else "INC"}],  # receipt: no VAT
             "payment": [payment],
             "price_total": float(amount),
             "comment": f"אמצעי תשלום: {method}",

@@ -18,6 +18,7 @@ def test_payload_codes():
     assert p["type"] == 400 and p["api_key"] == "KEY" and p["developer_email"] == "dev@example.com"
     assert p["payment"] == [{"payment_type": 4, "payment_sum": 1500.0, "date": "18/11/2026"}]
     assert p["customer_phone"] == "0521234567" and p["transaction_id"] == "m1"
+    assert p["item"][0]["vat_type"] == "NON"
     bit = c.build_payload(customer_name="דנה", amount=Decimal("10"), method="ביט", description="x", date=d)
     assert bit["payment"][0]["payment_type"] == 9 and bit["payment"][0]["other_payment_type_name"] == "ביט"
 
