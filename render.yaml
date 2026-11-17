@@ -2,12 +2,11 @@ services:
   - type: web
     name: instagram-receipt-bot
     runtime: docker
-    plan: starter            # needed for the persistent disk below
+    # Free plan: receipts live in Hyp, so no persistent disk is needed.
+    # The service sleeps after ~15 idle minutes; the first message after that takes ~30s.
+    # Without Hyp (locally drawn receipts), switch to "starter" and add a disk mounted at /data.
+    plan: free
     healthCheckPath: /
-    disk:
-      name: receipts
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PUBLIC_BASE_URL
         sync: false
