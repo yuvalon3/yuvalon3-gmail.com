@@ -52,10 +52,12 @@ class HypClient:
             "payment_type": payment_type,
             "payment_sum": float(amount),
             "date": date.strftime("%d/%m/%Y"),
+            # Shown in the "פרטים" column of the payments table on the receipt.
+            "details": description,
+            "comment": description,
         }
         if payment_type == OTHER_PAYMENT:
             payment["other_payment_type_name"] = method
-            payment["comment"] = method
         payload = {
             "api_key": self.api_key,
             "developer_email": self.developer_email,
@@ -66,7 +68,6 @@ class HypClient:
                       "vat_type": "NON" if self.doc_type == 400 else "INC"}],  # receipt: no VAT
             "payment": [payment],
             "price_total": float(amount),
-            "comment": f"אמצעי תשלום: {method}",
             "lang": "he",
             "currency_code": "ILS",
             "send_copy": self.send_email_copy,

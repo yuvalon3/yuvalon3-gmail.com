@@ -35,7 +35,7 @@ class Settings:
     business_phone: str = field(default_factory=lambda: _env("BUSINESS_PHONE"))
     business_address: str = field(default_factory=lambda: _env("BUSINESS_ADDRESS"))
     business_email: str = field(default_factory=lambda: _env("BUSINESS_EMAIL"))
-    default_description: str = field(default_factory=lambda: _env("DEFAULT_DESCRIPTION", "שירותי כלה"))
+    default_description: str = field(default_factory=lambda: _env("DEFAULT_DESCRIPTION", "הדרכת כלה"))
     logo_path: str = field(default_factory=lambda: _env("LOGO_PATH"))
     receipt_start_number: int = field(default_factory=lambda: int(_env("RECEIPT_START_NUMBER", "1001")))
     timezone: str = field(default_factory=lambda: _env("TIMEZONE", "Asia/Jerusalem"))
