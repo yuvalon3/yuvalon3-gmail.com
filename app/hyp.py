@@ -68,7 +68,6 @@ class HypClient:
                       "vat_type": "NON" if self.doc_type == 400 else "INC"}],  # receipt: no VAT
             "payment": [payment],
             "price_total": float(amount),
-            "comment": f"אמצעי תשלום: {method}",
             "lang": "he",
             "currency_code": "ILS",
             "send_copy": self.send_email_copy,

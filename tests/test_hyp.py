@@ -20,6 +20,7 @@ def test_payload_codes():
                              "details": "הדרכת כלה", "comment": "הדרכת כלה"}]
     assert p["customer_phone"] == "0521234567" and p["transaction_id"] == "m1"
     assert p["item"][0]["vat_type"] == "NON"
+    assert "comment" not in p  # no "הערה מצורפת" on the receipt
     bit = c.build_payload(customer_name="דנה", amount=Decimal("10"), method="ביט", description="x", date=d)
     assert bit["payment"][0]["payment_type"] == 9 and bit["payment"][0]["other_payment_type_name"] == "ביט"
 
