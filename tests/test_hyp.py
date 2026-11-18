@@ -14,9 +14,10 @@ def test_payload_codes():
     c = HypClient("KEY", "dev@example.com")
     d = datetime(2026, 11, 18)
     p = c.build_payload(customer_name="דנה", amount=Decimal("1500"), method="העברה בנקאית",
-                        description="שירותי כלה", date=d, customer_phone="972521234567", transaction_id="m1")
+                        description="הדרכת כלה", date=d, customer_phone="972521234567", transaction_id="m1")
     assert p["type"] == 400 and p["api_key"] == "KEY" and p["developer_email"] == "dev@example.com"
-    assert p["payment"] == [{"payment_type": 4, "payment_sum": 1500.0, "date": "18/11/2026"}]
+    assert p["payment"] == [{"payment_type": 4, "payment_sum": 1500.0, "date": "18/11/2026",
+                             "details": "הדרכת כלה", "comment": "הדרכת כלה"}]
     assert p["customer_phone"] == "0521234567" and p["transaction_id"] == "m1"
     assert p["item"][0]["vat_type"] == "NON"
     bit = c.build_payload(customer_name="דנה", amount=Decimal("10"), method="ביט", description="x", date=d)
