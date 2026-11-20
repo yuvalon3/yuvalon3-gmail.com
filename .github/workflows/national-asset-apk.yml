@@ -1,0 +1,47 @@
+name: National Asset APK
+
+on:
+  push:
+    paths:
+      - "national-asset-app/**"
+      - ".github/workflows/national-asset-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: national-asset-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and build
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk NechesLeumi.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NechesLeumi-apk
+          path: national-asset-app/NechesLeumi.apk
+      - name: Publish APK to the "national-asset-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=national-asset-latest
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}:refs/tags/${TAG}"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease \
+              --title "נכס לאומי – אפליקציה לאנדרואיד" \
+              --notes "הורידו את NechesLeumi.apk בטלפון והתקינו."
+          fi
+          gh release upload "$TAG" NechesLeumi.apk --clobber

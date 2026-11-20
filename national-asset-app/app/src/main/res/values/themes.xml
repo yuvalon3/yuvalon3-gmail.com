@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NechesLeumi" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#B91C1C</item>
+    </style>
+    <color name="ic_bg">#B91C1C</color>
+</resources>
