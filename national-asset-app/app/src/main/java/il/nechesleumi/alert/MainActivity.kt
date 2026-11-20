@@ -7,16 +7,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
 
-/** A trigger SMS arrived and the user has to confirm starting the event. */
-data class TriggerPrompt(val mode: Mode?)
+/** Ask the user to confirm starting an event (from a trigger SMS or a home-screen shortcut). */
+data class TriggerPrompt(val mode: Mode?, val fromTrigger: Boolean)
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val ACTION_SHORTCUT_START = "il.nechesleumi.alert.START"
+    }
+
     private val trigger = mutableStateOf<TriggerPrompt?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
-        handle(intent)
+        if (savedInstanceState == null) handle(intent)
         setContent { AppRoot(trigger) }
     }
 
@@ -26,15 +30,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(i: Intent?) {
-        if (i == null || !i.hasExtra(Notifications.EXTRA_MODE)) return
-        if (i.getBooleanExtra(Notifications.EXTRA_TRIGGER, false) && Store.event.value?.active != true) {
-            trigger.value = TriggerPrompt(i.getStringExtra(Notifications.EXTRA_MODE)?.let { Mode.valueOf(it) })
-            if (Build.VERSION.SDK_INT >= 27) {
+        if (i == null) return
+        val mode = i.getStringExtra(Notifications.EXTRA_MODE)?.let { runCatching { Mode.valueOf(it) }.getOrNull() }
+        val fromShortcut = i.action == ACTION_SHORTCUT_START
+        val fromTrigger = i.getBooleanExtra(Notifications.EXTRA_TRIGGER, false)
+        if ((fromShortcut || fromTrigger) && Store.event.value?.active != true) {
+            trigger.value = TriggerPrompt(mode, fromTrigger)
+            if (fromTrigger && Build.VERSION.SDK_INT >= 27) {
                 setShowWhenLocked(true)
                 setTurnScreenOn(true)
             }
         }
         i.removeExtra(Notifications.EXTRA_TRIGGER)
         i.removeExtra(Notifications.EXTRA_MODE)
+        if (fromShortcut) i.action = Intent.ACTION_MAIN
     }
 }

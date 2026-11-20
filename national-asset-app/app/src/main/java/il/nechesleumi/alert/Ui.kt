@@ -75,7 +75,7 @@ fun AppRoot(trigger: MutableState<TriggerPrompt?>) {
                     Screen.SETTINGS -> SettingsScreen { screen = Screen.MAIN }
                 }
                 trigger.value?.let { t ->
-                    StartDialog(preset = t.mode, fromTrigger = true, onDismiss = { trigger.value = null })
+                    StartDialog(preset = t.mode, fromTrigger = t.fromTrigger, onDismiss = { trigger.value = null })
                 }
             }
         }
@@ -85,6 +85,10 @@ fun AppRoot(trigger: MutableState<TriggerPrompt?>) {
 private val neededPermissions = buildList {
     add(Manifest.permission.SEND_SMS)
     add(Manifest.permission.RECEIVE_SMS)
+    add(Manifest.permission.CALL_PHONE)
+    add(Manifest.permission.READ_PHONE_STATE)
+    add(Manifest.permission.READ_CALL_LOG)
+    if (Build.VERSION.SDK_INT >= 28) add(Manifest.permission.ANSWER_PHONE_CALLS)
     if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
 }
 
@@ -137,14 +141,20 @@ private fun IdleContent(onContacts: () -> Unit, onSettings: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (missing.isNotEmpty()) Warning("חסרות הרשאות (SMS / התראות). אשרו אותן בהגדרות האפליקציה.")
+        if (missing.isNotEmpty()) Warning(
+            "חסרות הרשאות (SMS / טלפון / יומן שיחות / התראות).",
+            "לאישור",
+        ) {
+            ctx.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+            )
+        }
         if (contacts.isEmpty()) Warning("רשימת התפוצה ריקה – הוסיפו אנשים.", "לרשימה", onContacts)
-        if (s.makeCalls && !s.twilioReady) Warning("Twilio לא מוגדר – לא יתבצעו שיחות.", "להגדרות", onSettings)
 
         Text("רשימת תפוצה: ${contacts.size} אנשים", style = MaterialTheme.typography.titleMedium)
         val what = listOfNotNull(
             if (s.sendSms) "SMS" else null,
-            if (s.makeCalls && s.twilioReady) "שיחה קולית" else null,
+            if (s.makeCalls) "שיחה מהטלפון שלך" else null,
         ).joinToString(" + ").ifEmpty { "כלום (הכל כבוי בהגדרות)" }
         Text("בהפעלה יישלח לכל אחד: $what", style = MaterialTheme.typography.bodyMedium)
 
@@ -230,6 +240,7 @@ private fun EventContent(ev: EventData) {
     var filter by rememberSaveable { mutableStateOf(Filter.ALL) }
     var confirmEnd by remember { mutableStateOf(false) }
     val s by Store.settings.collectAsState()
+    val dialing by Store.dialerRunning.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
         Banner(ev)
@@ -246,6 +257,7 @@ private fun EventContent(ev: EventData) {
                 FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text("${f.label} ($n)") })
             }
         }
+        CallingPanel(ev)
         val shown = ev.entries
             .filter { filter == Filter.ALL || (filter == Filter.FOUND) == it.found }
             .sortedWith(compareBy<Entry> { it.found }.thenBy { it.foundAt ?: 0L })
@@ -254,7 +266,7 @@ private fun EventContent(ev: EventData) {
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(shown, key = { it.contactId }) { EntryCard(it, ev.active, s.twilioReady) }
+            items(shown, key = { it.contactId }) { EntryCard(it, ev.active, s.makeCalls) }
         }
         Surface(tonalElevation = 3.dp) {
             Row(
@@ -262,11 +274,18 @@ private fun EventContent(ev: EventData) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (ev.active) {
-                    if (s.twilioReady) {
-                        OutlinedButton(
-                            onClick = { EventService.send(ctx, EventService.ACTION_RETRY); toast(ctx, "מחייג שוב למי שלא נמצא") },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("חייג שוב", maxLines = 1) }
+                    if (s.makeCalls) {
+                        if (dialing) {
+                            OutlinedButton(
+                                onClick = { EventService.send(ctx, EventService.ACTION_PAUSE_CALLS) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("עצור חיוגים", maxLines = 1) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { EventService.send(ctx, EventService.ACTION_RETRY); toast(ctx, "מחייג שוב למי שלא נמצא") },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("חייג שוב", maxLines = 1) }
+                        }
                     }
                     OutlinedButton(onClick = { share(ctx, ev) }, modifier = Modifier.weight(1f)) { Text("שתף דוח", maxLines = 1) }
                     Button(
@@ -292,6 +311,42 @@ private fun EventContent(ev: EventData) {
             },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("ביטול") } },
         )
+    }
+}
+
+/** The person being called right now, with "ענה / לא ענה" buttons. */
+@Composable
+private fun CallingPanel(ev: EventData) {
+    val ctx = LocalContext.current
+    val callingId by Store.calling.collectAsState()
+    val dialing by Store.dialerRunning.collectAsState()
+    if (!ev.active || !dialing) return
+    val e = callingId?.let { id -> ev.entries.firstOrNull { it.contactId == id } }
+    val waiting = ev.entries.count { it.call == CallState.WAITING }
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            if (e == null) {
+                Text("ממתין לסבב החיוג הבא… ($waiting בתור)", fontWeight = FontWeight.Bold)
+            } else {
+                Text("📞 מתקשר ל${e.name} · ${e.call.label}", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("עוד $waiting בתור", fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { EventService.send(ctx, EventService.ACTION_ANSWERED) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = FoundColor),
+                    ) { Text("ענה ✓") }
+                    OutlinedButton(
+                        onClick = { EventService.send(ctx, EventService.ACTION_NO_ANSWER) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("לא ענה ✗") }
+                }
+            }
+        }
     }
 }
 
@@ -352,9 +407,10 @@ private fun smsColor(s: SmsState) = when (s) {
 
 private fun callColor(c: CallState) = when (c) {
     CallState.ANSWERED -> FoundColor
-    CallState.QUEUED, CallState.RINGING, CallState.IN_PROGRESS -> pending
-    CallState.IDLE, CallState.CANCELED -> neutral
-    else -> bad
+    CallState.WAITING, CallState.DIALING, CallState.IN_CALL -> pending
+    CallState.MAYBE -> DrillColor
+    CallState.IDLE, CallState.UNKNOWN -> neutral
+    CallState.NO_ANSWER, CallState.FAILED -> bad
 }
 
 @Composable
@@ -409,7 +465,7 @@ private fun EntryCard(e: Entry, active: Boolean, canCall: Boolean) {
             }
             if (active && canCall) {
                 DropdownMenuItem(
-                    text = { Text("חייג שוב (הודעה קולית)") },
+                    text = { Text("חייג שוב") },
                     leadingIcon = { Icon(Icons.Filled.Refresh, null) },
                     onClick = { EventService.send(ctx, EventService.ACTION_CALL_ONE, e.contactId); menu = false },
                 )
@@ -574,8 +630,17 @@ private fun SettingsScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var s by remember { mutableStateOf(Store.settings.value) }
-    var status by remember { mutableStateOf("") }
-    var testNumber by remember { mutableStateOf("") }
+    var tts by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        var engine: android.speech.tts.TextToSpeech? = null
+        engine = android.speech.tts.TextToSpeech(ctx) { st ->
+            if (st == android.speech.tts.TextToSpeech.SUCCESS) {
+                engine?.language = Locale("he", "IL")
+                tts = engine
+            }
+        }
+        onDispose { engine?.shutdown() }
+    }
 
     fun save() { Store.saveSettings(s); toast(ctx, "נשמר") }
 
@@ -597,63 +662,27 @@ private fun SettingsScreen(onBack: () -> Unit) {
             OutlinedTextField(s.smsDrill, { s = s.copy(smsDrill = it) }, Modifier.fillMaxWidth(), label = { Text("נוסח הודעה – תרגיל") })
             OutlinedTextField(s.smsReal, { s = s.copy(smsReal = it) }, Modifier.fillMaxWidth(), label = { Text("נוסח הודעה – אמת") })
 
-            Section("שיחות קוליות (Twilio)")
+            Section("שיחות (מהטלפון שלך, אחת אחרי השנייה)")
             Toggle("לבצע שיחות", s.makeCalls) { s = s.copy(makeCalls = it) }
-            OutlinedTextField(s.twilioSid, { s = s.copy(twilioSid = it.trim()) }, Modifier.fillMaxWidth(), label = { Text("Account SID") }, singleLine = true)
-            OutlinedTextField(
-                s.twilioToken, { s = s.copy(twilioToken = it.trim()) }, Modifier.fillMaxWidth(),
-                label = { Text("Auth Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
-            )
-            OutlinedTextField(
-                s.twilioFrom, { s = s.copy(twilioFrom = it.trim()) }, Modifier.fillMaxWidth(),
-                label = { Text("מספר יוצא (מספר Twilio או מספר מאומת)") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            )
+            Toggle("להשמיע הודעה ברמקול בזמן השיחה", s.announce) { s = s.copy(announce = it) }
             OutlinedTextField(
                 s.callText, { s = s.copy(callText = it) }, Modifier.fillMaxWidth(),
                 label = { Text("מה נאמר בשיחה") },
                 supportingText = { Text("{mode} יוחלף ב\"תרגיל\" או \"אמת\"") },
             )
-            NumberField("כמה פעמים לחזור על ההודעה", s.callRepeat) { s = s.copy(callRepeat = it) }
-            Toggle("זיהוי תא קולי (תא קולי לא נחשב מענה)", s.detectVoicemail) { s = s.copy(detectVoicemail = it) }
-            NumberField("מספר ניסיונות חיוג לאדם", s.maxAttempts) { s = s.copy(maxAttempts = it) }
-            NumberField("המתנה בין ניסיונות (שניות)", s.retryDelaySec) { s = s.copy(retryDelaySec = it) }
-            OutlinedTextField(s.voice, { s = s.copy(voice = it.trim()) }, Modifier.fillMaxWidth(), label = { Text("קול (מתקדם)") }, singleLine = true)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
-                    Store.saveSettings(s)
-                    status = "בודק…"
-                    scope.launch {
-                        status = withContext(Dispatchers.IO) {
-                            runCatching { "✅ מחובר: " + Twilio(s.twilioSid, s.twilioToken).accountName() }
-                                .getOrElse { "❌ ${it.message}" }
-                        }
-                    }
-                }) { Text("בדיקת חיבור") }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    testNumber, { testNumber = it }, Modifier.weight(1f), label = { Text("מספר לשיחת ניסיון") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                )
-                OutlinedButton(onClick = {
-                    Store.saveSettings(s)
-                    status = "מחייג…"
-                    scope.launch {
-                        status = withContext(Dispatchers.IO) {
-                            runCatching {
-                                Twilio(s.twilioSid, s.twilioToken).startCall(
-                                    testNumber, s.twilioFrom,
-                                    CallLogic.twiml(s.callTextFor(Mode.DRILL), s.voice, s.callRepeat), false,
-                                )
-                                "✅ השיחה יצאה"
-                            }.getOrElse { "❌ ${it.message}" }
-                        }
-                    }
-                }) { Text("חייג") }
-            }
-            if (status.isNotEmpty()) Text(status)
+            NumberField("זמן מקסימלי לשיחה, כולל צלצול (שניות)", s.callWindowSec) { s = s.copy(callWindowSec = it) }
+            NumberField("מספר סבבי חיוג", s.maxAttempts) { s = s.copy(maxAttempts = it) }
+            NumberField("המתנה בין סבבים (שניות)", s.retryDelaySec) { s = s.copy(retryDelaySec = it) }
+            Text(
+                "אחרי כל שיחה האפליקציה בודקת ביומן השיחות אם השיחה נענתה. " +
+                    "אם הצד השני ניתק בעצמו – \"ענה\". אם השיחה נמשכה עד הזמן המקסימלי – \"ענה? אולי תא קולי\" (לא נספר כנמצא). " +
+                    "בזמן שיחה אפשר ללחוץ ענה / לא ענה במסך או בהתראה.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = {
+                tts?.speak(s.callTextFor(Mode.DRILL), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
+                    ?: toast(ctx, "מנוע הקראה לא זמין")
+            }) { Text("🔊 השמע לדוגמה") }
 
             Section("הפעלה אוטומטית מהודעה נכנסת")
             Text(

@@ -30,23 +30,17 @@ class LogicTest {
         assertNull(Trigger.detect("הופעל נכס לאומי")!!.mode)
     }
 
-    @Test fun callStates() {
-        assertEquals(CallState.ANSWERED, CallLogic.map("in-progress", "human", 0, true))
-        assertEquals(CallState.IN_PROGRESS, CallLogic.map("in-progress", null, 0, true))
-        assertEquals(CallState.ANSWERED, CallLogic.map("in-progress", null, 0, false))
-        assertEquals(CallState.MACHINE, CallLogic.map("completed", "machine_start", 20, true))
-        assertEquals(CallState.NO_ANSWER, CallLogic.map("no-answer", null, 0, true))
-        assertEquals(CallState.BUSY, CallLogic.map("busy", null, 0, true))
-        assertEquals(CallState.RINGING, CallLogic.map("ringing", null, 0, true))
-        assertEquals(CallState.ANSWERED, CallLogic.map("completed", null, 7, true))
-    }
-
-    @Test fun twiml() {
-        val t = CallLogic.twiml("נכס <לאומי>", "Google.he-IL-Standard-A", 2)
-        assertTrue(t.startsWith("<Response>"))
-        assertTrue(t.contains("נכס &lt;לאומי&gt;"))
-        assertEquals(2, Regex("<Say ").findAll(t).count())
-        assertTrue(t.endsWith("<Hangup/></Response>"))
+    @Test fun callOutcome() {
+        assertEquals(CallState.UNKNOWN, CallLogic.outcome(null, remoteHungUp = true, manual = null))
+        assertEquals(CallState.NO_ANSWER, CallLogic.outcome(0, remoteHungUp = true, manual = null))
+        assertEquals(CallState.NO_ANSWER, CallLogic.outcome(0, remoteHungUp = false, manual = null))
+        // connected and they hung up -> a person
+        assertEquals(CallState.ANSWERED, CallLogic.outcome(8, remoteHungUp = true, manual = null))
+        // connected until we hung up -> maybe voicemail
+        assertEquals(CallState.MAYBE, CallLogic.outcome(20, remoteHungUp = false, manual = null))
+        // the user's tap wins
+        assertEquals(CallState.ANSWERED, CallLogic.outcome(0, remoteHungUp = false, manual = CallState.ANSWERED))
+        assertEquals(CallState.NO_ANSWER, CallLogic.outcome(20, remoteHungUp = false, manual = CallState.NO_ANSWER))
     }
 
     @Test fun import() {

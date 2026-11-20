@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="drill"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_drill"
+        android:shortcutLongLabel="@string/sc_drill_long">
+        <intent
+            android:action="il.nechesleumi.alert.START"
+            android:targetPackage="il.nechesleumi.alert"
+            android:targetClass="il.nechesleumi.alert.MainActivity">
+            <extra android:name="mode" android:value="DRILL" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="real"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_real"
+        android:shortcutLongLabel="@string/sc_real_long">
+        <intent
+            android:action="il.nechesleumi.alert.START"
+            android:targetPackage="il.nechesleumi.alert"
+            android:targetClass="il.nechesleumi.alert.MainActivity">
+            <extra android:name="mode" android:value="REAL" />
+        </intent>
+    </shortcut>
+</shortcuts>

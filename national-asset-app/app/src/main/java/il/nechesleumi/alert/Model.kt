@@ -9,17 +9,16 @@ enum class SmsState(val label: String) {
     NONE("—"), SENDING("נשלח…"), SENT("נשלח"), DELIVERED("נמסר"), FAILED("נכשל")
 }
 
-enum class CallState(val label: String, val terminal: Boolean) {
-    IDLE("—", false),
-    QUEUED("מחייג…", false),
-    RINGING("מצלצל", false),
-    IN_PROGRESS("מחובר…", false),
-    ANSWERED("ענה", true),
-    MACHINE("תא קולי", true),
-    NO_ANSWER("לא ענה", true),
-    BUSY("תפוס", true),
-    FAILED("שגיאה", true),
-    CANCELED("בוטל", true),
+enum class CallState(val label: String) {
+    IDLE("—"),
+    WAITING("בתור"),
+    DIALING("מחייג…"),
+    IN_CALL("בשיחה"),
+    ANSWERED("ענה"),
+    MAYBE("ענה? אולי תא קולי"),
+    NO_ANSWER("לא ענה"),
+    UNKNOWN("לא ידוע"),
+    FAILED("שגיאה"),
 }
 
 data class Contact(val id: String, val name: String, val phone: String)
@@ -61,25 +60,18 @@ data class EventData(
 }
 
 data class Settings(
-    val twilioSid: String = "",
-    val twilioToken: String = "",
-    val twilioFrom: String = "",
     val smsDrill: String = "הופעל נכס לאומי – תרגיל. נא להשיב להודעה זו לאישור קבלה.",
     val smsReal: String = "הופעל נכס לאומי – אמת! נא להשיב להודעה זו לאישור קבלה.",
     val callText: String = "נכס לאומי",
-    val callRepeat: Int = 2,
-    val voice: String = "Google.he-IL-Standard-A",
-    val detectVoicemail: Boolean = true,
-    val maxAttempts: Int = 3,
+    val announce: Boolean = true,
+    val callWindowSec: Int = 35,
+    val maxAttempts: Int = 2,
     val retryDelaySec: Int = 60,
     val sendSms: Boolean = true,
     val makeCalls: Boolean = true,
     val autoStart: Boolean = false,
     val triggerSenders: String = "",
 ) {
-    val twilioReady: Boolean
-        get() = twilioSid.isNotBlank() && twilioToken.isNotBlank() && twilioFrom.isNotBlank()
-
     fun smsFor(mode: Mode) = if (mode == Mode.REAL) smsReal else smsDrill
     fun callTextFor(mode: Mode) = callText.replace("{mode}", mode.label)
 }
@@ -102,10 +94,8 @@ object Json {
     }
 
     fun settings(s: Settings): String = JSONObject()
-        .put("twilioSid", s.twilioSid).put("twilioToken", s.twilioToken).put("twilioFrom", s.twilioFrom)
         .put("smsDrill", s.smsDrill).put("smsReal", s.smsReal)
-        .put("callText", s.callText).put("callRepeat", s.callRepeat).put("voice", s.voice)
-        .put("detectVoicemail", s.detectVoicemail)
+        .put("callText", s.callText).put("announce", s.announce).put("callWindowSec", s.callWindowSec)
         .put("maxAttempts", s.maxAttempts).put("retryDelaySec", s.retryDelaySec)
         .put("sendSms", s.sendSms).put("makeCalls", s.makeCalls)
         .put("autoStart", s.autoStart).put("triggerSenders", s.triggerSenders)
@@ -116,15 +106,11 @@ object Json {
         if (str.isNullOrBlank()) return d
         val o = JSONObject(str)
         return Settings(
-            twilioSid = o.optString("twilioSid", d.twilioSid),
-            twilioToken = o.optString("twilioToken", d.twilioToken),
-            twilioFrom = o.optString("twilioFrom", d.twilioFrom),
             smsDrill = o.optString("smsDrill", d.smsDrill),
             smsReal = o.optString("smsReal", d.smsReal),
             callText = o.optString("callText", d.callText),
-            callRepeat = o.optInt("callRepeat", d.callRepeat),
-            voice = o.optString("voice", d.voice),
-            detectVoicemail = o.optBoolean("detectVoicemail", d.detectVoicemail),
+            announce = o.optBoolean("announce", d.announce),
+            callWindowSec = o.optInt("callWindowSec", d.callWindowSec),
             maxAttempts = o.optInt("maxAttempts", d.maxAttempts),
             retryDelaySec = o.optInt("retryDelaySec", d.retryDelaySec),
             sendSms = o.optBoolean("sendSms", d.sendSms),
@@ -172,7 +158,7 @@ object Json {
                     sms = SmsState.valueOf(x.optString("sms", "NONE")),
                     replyText = x.str("replyText"),
                     replyAt = x.lng("replyAt"),
-                    call = CallState.valueOf(x.optString("call", "IDLE")),
+                    call = runCatching { CallState.valueOf(x.optString("call", "IDLE")) }.getOrDefault(CallState.IDLE),
                     callSid = x.str("callSid"),
                     attempts = x.optInt("attempts"),
                     answeredAt = x.lng("answeredAt"),

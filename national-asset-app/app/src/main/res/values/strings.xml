@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_drill">תרגיל</string>
+    <string name="sc_drill_long">הפעלת נכס לאומי – תרגיל</string>
+    <string name="sc_real">אמת</string>
+    <string name="sc_real_long">הפעלת נכס לאומי – אמת</string>
+</resources>

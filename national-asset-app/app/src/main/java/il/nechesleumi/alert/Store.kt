@@ -18,6 +18,12 @@ object Store {
     val settings: StateFlow<Settings> = _settings
     val event: StateFlow<EventData?> = _event
 
+    /** Contact currently being called by the phone (null = no call in progress). */
+    val calling = MutableStateFlow<String?>(null)
+
+    /** The calling queue is running (incl. waiting between rounds). */
+    val dialerRunning = MutableStateFlow(false)
+
     @Synchronized
     fun init(ctx: Context) {
         if (::prefs.isInitialized) return

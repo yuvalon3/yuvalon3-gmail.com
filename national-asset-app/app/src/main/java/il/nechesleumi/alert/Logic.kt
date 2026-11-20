@@ -14,7 +14,7 @@ object Phones {
         return d
     }
 
-    /** To E.164 for Twilio / SMS: "052-1234567" -> "+972521234567". Foreign "+1..." numbers are kept. */
+    /** To E.164 for dialing / SMS: "052-1234567" -> "+972521234567". Foreign "+1..." numbers are kept. */
     fun e164(p: String): String {
         val t = p.trim()
         if (t.startsWith("+")) return "+" + t.filter(Char::isDigit)
@@ -56,36 +56,21 @@ object Trigger {
     }
 }
 
-/** Twilio call status -> our call state; TwiML for the announcement. */
+/** Decides how a phone call ended, from the call log. */
 object CallLogic {
-    fun map(status: String, answeredBy: String?, duration: Int, detectMachine: Boolean): CallState {
-        val ab = answeredBy?.lowercase()
-        if (!ab.isNullOrBlank()) {
-            if (ab == "human" || ab == "unknown") return CallState.ANSWERED
-            if (ab.startsWith("machine") || ab == "fax") return CallState.MACHINE
-        }
-        return when (status) {
-            "queued", "initiated" -> CallState.QUEUED
-            "ringing" -> CallState.RINGING
-            "in-progress" -> if (detectMachine) CallState.IN_PROGRESS else CallState.ANSWERED
-            "completed" -> if (duration > 0) CallState.ANSWERED else CallState.NO_ANSWER
-            "busy" -> CallState.BUSY
-            "no-answer" -> CallState.NO_ANSWER
-            "canceled" -> CallState.CANCELED
-            "failed" -> CallState.FAILED
-            else -> CallState.QUEUED
-        }
-    }
-
-    private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        .replace("\"", "&quot;").replace("'", "&apos;")
-
-    fun twiml(text: String, voice: String, repeat: Int): String {
-        val v = if (voice.isBlank()) "" else " voice=\"${esc(voice.trim())}\""
-        val say = "<Say language=\"he-IL\"$v>${esc(text)}</Say>"
-        val n = repeat.coerceIn(1, 5)
-        val body = (1..n).joinToString("<Pause length=\"1\"/>") { say }
-        return "<Response><Pause length=\"1\"/>$body<Hangup/></Response>"
+    /**
+     * @param durationSec connected time from the call log (null = no log entry / no permission)
+     * @param remoteHungUp the other side ended the call before our time window ran out
+     * @param manual what the user tapped during the call (ענה / לא ענה), if anything
+     */
+    fun outcome(durationSec: Int?, remoteHungUp: Boolean, manual: CallState?): CallState = when {
+        manual != null -> manual
+        durationSec == null -> CallState.UNKNOWN
+        durationSec <= 0 -> CallState.NO_ANSWER
+        // They picked up, heard the announcement and hung up: a person, not a voicemail box.
+        remoteHungUp -> CallState.ANSWERED
+        // Connected until we hung up: a person who stayed on the line, or voicemail.
+        else -> CallState.MAYBE
     }
 }
 
